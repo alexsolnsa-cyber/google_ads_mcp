@@ -63,9 +63,12 @@ def main():
   """Initializes and runs the MCP server."""
   asyncio.run(update_views_yaml())  # Check and update docs resource
   get_ads_client()  # Check Google Ads credentials
-  print("mcp server starting...")
+  port = int(os.environ.get("PORT", 8000))
+  print(f"mcp server starting on port {port}...")
   mcp_server.run(
       transport="streamable-http",
+      host="0.0.0.0",
+      port=port,
       show_banner=False,
   )  # Initialize and run the server
 
