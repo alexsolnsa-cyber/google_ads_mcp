@@ -24,6 +24,7 @@ from ads_mcp.tools.mutations import common
 from ads_mcp.tools.mutations import criterion
 from ads_mcp.tools.mutations import schedule
 from ads_mcp.tools.mutations import sitelink
+from ads_mcp.tools.mutations import snippet
 
 __all__ = [
     "ad",
@@ -36,4 +37,5 @@ __all__ = [
     "criterion",
     "schedule",
     "sitelink",
+    "snippet",
 ]
