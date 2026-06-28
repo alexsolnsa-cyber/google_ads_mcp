@@ -32,38 +32,60 @@ def _build_bidding_strategy(
     target_cpa_micros: int | None = None,
     target_roas: float | None = None,
 ):
-  """Builds a bidding strategy dict for campaign creation/update.
+  """Builds a bidding strategy for campaign creation/update.
 
-  Returns a dict with the field name and value to set on the Campaign object.
+  Returns a tuple of (field_name, value, field_mask_paths).
+  field_mask_paths contains explicit subfield paths required by the API
+  for update operations.
   """
   strategy_upper = strategy.upper().replace(" ", "_")
 
   if strategy_upper == "TARGET_SPEND":
-    return "target_spend", common_types.TargetSpend()
+    return (
+        "target_spend",
+        common_types.TargetSpend(),
+        ["target_spend.target_spend_micros"],
+    )
   elif strategy_upper == "MAXIMIZE_CONVERSIONS":
     mc = common_types.MaximizeConversions()
+    paths = ["maximize_conversions.target_cpa_micros"]
     if target_cpa_micros:
       mc.target_cpa_micros = target_cpa_micros
-    return "maximize_conversions", mc
+    return "maximize_conversions", mc, paths
   elif strategy_upper == "MAXIMIZE_CONVERSION_VALUE":
     mcv = common_types.MaximizeConversionValue()
+    paths = ["maximize_conversion_value.target_roas"]
     if target_roas:
       mcv.target_roas = target_roas
-    return "maximize_conversion_value", mcv
+    return "maximize_conversion_value", mcv, paths
   elif strategy_upper == "MANUAL_CPC":
-    return "manual_cpc", common_types.ManualCpc(enhanced_cpc_enabled=False)
+    return (
+        "manual_cpc",
+        common_types.ManualCpc(enhanced_cpc_enabled=False),
+        ["manual_cpc.enhanced_cpc_enabled"],
+    )
   elif strategy_upper == "ENHANCED_CPC":
-    return "manual_cpc", common_types.ManualCpc(enhanced_cpc_enabled=True)
+    return (
+        "manual_cpc",
+        common_types.ManualCpc(enhanced_cpc_enabled=True),
+        ["manual_cpc.enhanced_cpc_enabled"],
+    )
   elif strategy_upper == "TARGET_CPA":
     if not target_cpa_micros:
       raise ToolError("target_cpa_micros is required for TARGET_CPA strategy.")
-    return "target_cpa", common_types.TargetCpa(
-        target_cpa_micros=target_cpa_micros
+    return (
+        "target_cpa",
+        common_types.TargetCpa(target_cpa_micros=target_cpa_micros),
+        ["target_cpa.target_cpa_micros"],
     )
   elif strategy_upper == "TARGET_ROAS":
     if not target_roas:
       raise ToolError("target_roas is required for TARGET_ROAS strategy.")
-    return "target_roas", common_types.TargetRoas(target_roas=target_roas)
+    return (
+        "target_roas",
+        common_types.TargetRoas(target_roas=target_roas),
+        ["target_roas.target_roas"],
+    )
   else:
     valid = [
         "TARGET_SPEND", "MAXIMIZE_CONVERSIONS",
@@ -116,7 +138,7 @@ def create_search_campaign(
   ads_client = _get_client(login_customer_id)
   service = ads_client.get_service("CampaignService")
 
-  strategy_field, strategy_value = _build_bidding_strategy(
+  strategy_field, strategy_value, _ = _build_bidding_strategy(
       bidding_strategy, target_cpa_micros, target_roas
   )
 
@@ -184,7 +206,7 @@ def update_campaign_bidding_strategy(
   ads_client = _get_client(login_customer_id)
   service = ads_client.get_service("CampaignService")
 
-  strategy_field, strategy_value = _build_bidding_strategy(
+  strategy_field, strategy_value, mask_paths = _build_bidding_strategy(
       bidding_strategy, target_cpa_micros, target_roas
   )
 
@@ -195,7 +217,7 @@ def update_campaign_bidding_strategy(
 
   operation = service_types.CampaignOperation(update=campaign)
   operation.update_mask.CopyFrom(
-      field_mask_pb2.FieldMask(paths=[strategy_field])
+      field_mask_pb2.FieldMask(paths=mask_paths)
   )
 
   try:
