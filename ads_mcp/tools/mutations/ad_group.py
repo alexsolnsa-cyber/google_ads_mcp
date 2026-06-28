@@ -152,3 +152,35 @@ def update_ad_group_bid(
     _handle_google_ads_error(e)
 
   return {"resource_name": response.results[0].resource_name}
+
+
+@mcp.tool()
+def remove_ad_group(
+    customer_id: str,
+    ad_group_resource_name: str,
+    login_customer_id: str | None = None,
+) -> dict[str, str]:
+  """Removes an ad group from a campaign.
+
+  Args:
+      customer_id: Google Ads customer ID (digits only).
+      ad_group_resource_name: Full resource name of the ad group
+        (e.g., "customers/123/adGroups/456").
+      login_customer_id: MCC account ID if customer is managed.
+
+  Returns:
+      Dict with the removed resource_name.
+  """
+  ads_client = _get_client(login_customer_id)
+  service = ads_client.get_service("AdGroupService")
+
+  operation = service_types.AdGroupOperation(remove=ad_group_resource_name)
+
+  try:
+    response = service.mutate_ad_groups(
+        customer_id=customer_id, operations=[operation]
+    )
+  except GoogleAdsException as e:
+    _handle_google_ads_error(e)
+
+  return {"removed": response.results[0].resource_name}
