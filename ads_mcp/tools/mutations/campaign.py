@@ -27,23 +27,83 @@ from google.ads.googleads.errors import GoogleAdsException
 from google.protobuf import field_mask_pb2
 
 
+def _build_bidding_strategy(
+    strategy: str,
+    target_cpa_micros: int | None = None,
+    target_roas: float | None = None,
+):
+  """Builds a bidding strategy dict for campaign creation/update.
+
+  Returns a dict with the field name and value to set on the Campaign object.
+  """
+  strategy_upper = strategy.upper().replace(" ", "_")
+
+  if strategy_upper == "TARGET_SPEND":
+    return "target_spend", common_types.TargetSpend()
+  elif strategy_upper == "MAXIMIZE_CONVERSIONS":
+    mc = common_types.MaximizeConversions()
+    if target_cpa_micros:
+      mc.target_cpa_micros = target_cpa_micros
+    return "maximize_conversions", mc
+  elif strategy_upper == "MAXIMIZE_CONVERSION_VALUE":
+    mcv = common_types.MaximizeConversionValue()
+    if target_roas:
+      mcv.target_roas = target_roas
+    return "maximize_conversion_value", mcv
+  elif strategy_upper == "MANUAL_CPC":
+    return "manual_cpc", common_types.ManualCpc(enhanced_cpc_enabled=False)
+  elif strategy_upper == "ENHANCED_CPC":
+    return "manual_cpc", common_types.ManualCpc(enhanced_cpc_enabled=True)
+  elif strategy_upper == "TARGET_CPA":
+    if not target_cpa_micros:
+      raise ToolError("target_cpa_micros is required for TARGET_CPA strategy.")
+    return "target_cpa", common_types.TargetCpa(
+        target_cpa_micros=target_cpa_micros
+    )
+  elif strategy_upper == "TARGET_ROAS":
+    if not target_roas:
+      raise ToolError("target_roas is required for TARGET_ROAS strategy.")
+    return "target_roas", common_types.TargetRoas(target_roas=target_roas)
+  else:
+    valid = [
+        "TARGET_SPEND", "MAXIMIZE_CONVERSIONS",
+        "MAXIMIZE_CONVERSION_VALUE", "MANUAL_CPC",
+        "ENHANCED_CPC", "TARGET_CPA", "TARGET_ROAS",
+    ]
+    raise ToolError(
+        f"Invalid bidding strategy: {strategy!r}. "
+        f"Valid values: {', '.join(valid)}."
+    )
+
+
 @mcp.tool()
 def create_search_campaign(
     customer_id: str,
     name: str,
     budget_resource_name: str,
+    bidding_strategy: str = "TARGET_SPEND",
+    target_cpa_micros: int | None = None,
+    target_roas: float | None = None,
     status: str = "PAUSED",
     target_google_search: bool = True,
     target_search_network: bool = False,
     target_content_network: bool = False,
     login_customer_id: str | None = None,
 ) -> dict[str, str]:
-  """Creates a Search campaign with common_types.TargetSpend bidding.
+  """Creates a Search campaign with configurable bidding strategy.
 
   Args:
       customer_id: Google Ads customer ID (digits only).
-      name: Campaign name (e.g., "MattsCoinage - Collectible Silver").
+      name: Campaign name (e.g., "GoIELTS - Search - Main").
       budget_resource_name: Resource name from create_campaign_budget.
+      bidding_strategy: Bidding strategy type. Valid values:
+        TARGET_SPEND, MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE,
+        MANUAL_CPC, ENHANCED_CPC, TARGET_CPA, TARGET_ROAS.
+        Default TARGET_SPEND.
+      target_cpa_micros: Target CPA in micros. Required for TARGET_CPA,
+        optional for MAXIMIZE_CONVERSIONS (e.g., 5000000 = $5.00).
+      target_roas: Target ROAS value. Required for TARGET_ROAS,
+        optional for MAXIMIZE_CONVERSION_VALUE (e.g., 4.0 = 400%).
       status: PAUSED or ENABLED. Default PAUSED.
       target_google_search: Show on Google Search. Default True.
       target_search_network: Show on search partners. Default False.
@@ -56,10 +116,15 @@ def create_search_campaign(
   ads_client = _get_client(login_customer_id)
   service = ads_client.get_service("CampaignService")
 
+  strategy_field, strategy_value = _build_bidding_strategy(
+      bidding_strategy, target_cpa_micros, target_roas
+  )
+
   eu_political_enum = (
       enum_types.EuPoliticalAdvertisingStatusEnum.EuPoliticalAdvertisingStatus
   )
   eu_status = eu_political_enum.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
+
   campaign = resource_types.Campaign(
       name=name,
       campaign_budget=budget_resource_name,
@@ -69,9 +134,10 @@ def create_search_campaign(
       advertising_channel_type=(
           enum_types.AdvertisingChannelTypeEnum.AdvertisingChannelType.SEARCH
       ),
-      target_spend=common_types.TargetSpend(),
       contains_eu_political_advertising=eu_status,
   )
+  setattr(campaign, strategy_field, strategy_value)
+
   campaign.network_settings.target_google_search = target_google_search
   campaign.network_settings.target_search_network = target_search_network
   campaign.network_settings.target_content_network = target_content_network
@@ -87,6 +153,59 @@ def create_search_campaign(
 
   resource_name = response.results[0].resource_name
   return {"resource_name": resource_name}
+
+
+@mcp.tool()
+def update_campaign_bidding_strategy(
+    customer_id: str,
+    campaign_resource_name: str,
+    bidding_strategy: str,
+    target_cpa_micros: int | None = None,
+    target_roas: float | None = None,
+    login_customer_id: str | None = None,
+) -> dict[str, str]:
+  """Updates a campaign's bidding strategy.
+
+  Args:
+      customer_id: Google Ads customer ID (digits only).
+      campaign_resource_name: Full resource name of the campaign.
+      bidding_strategy: New bidding strategy. Valid values:
+        TARGET_SPEND, MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE,
+        MANUAL_CPC, ENHANCED_CPC, TARGET_CPA, TARGET_ROAS.
+      target_cpa_micros: Target CPA in micros. Required for TARGET_CPA,
+        optional for MAXIMIZE_CONVERSIONS (e.g., 5000000 = $5.00).
+      target_roas: Target ROAS value. Required for TARGET_ROAS,
+        optional for MAXIMIZE_CONVERSION_VALUE (e.g., 4.0 = 400%).
+      login_customer_id: MCC account ID if customer is managed.
+
+  Returns:
+      Dict with the updated campaign resource_name.
+  """
+  ads_client = _get_client(login_customer_id)
+  service = ads_client.get_service("CampaignService")
+
+  strategy_field, strategy_value = _build_bidding_strategy(
+      bidding_strategy, target_cpa_micros, target_roas
+  )
+
+  campaign = resource_types.Campaign(
+      resource_name=campaign_resource_name,
+  )
+  setattr(campaign, strategy_field, strategy_value)
+
+  operation = service_types.CampaignOperation(update=campaign)
+  operation.update_mask.CopyFrom(
+      field_mask_pb2.FieldMask(paths=[strategy_field])
+  )
+
+  try:
+    response = service.mutate_campaigns(
+        customer_id=customer_id, operations=[operation]
+    )
+  except GoogleAdsException as e:
+    _handle_google_ads_error(e)
+
+  return {"resource_name": response.results[0].resource_name}
 
 
 @mcp.tool()
