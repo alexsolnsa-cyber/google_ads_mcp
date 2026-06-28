@@ -29,21 +29,27 @@ from google.ads.googleads.errors import GoogleAdsException
 def create_responsive_search_ad(
     customer_id: str,
     ad_group_resource_name: str,
-    headlines: list[str],
-    descriptions: list[str],
+    headlines: list,
+    descriptions: list,
     final_url: str,
     path1: str = "",
     path2: str = "",
     status: str = "ENABLED",
     login_customer_id: str | None = None,
 ) -> dict[str, str]:
-  """Creates a Responsive Search Ad in an ad group.
+  """Creates a Responsive Search Ad in an ad group with optional headline/description pinning.
 
   Args:
       customer_id: Google Ads customer ID (digits only).
       ad_group_resource_name: Resource name from create_ad_group.
-      headlines: List of headline strings (3-15 headlines, max 30 chars).
-      descriptions: List of description strings (2-4, max 90 chars).
+      headlines: List of headlines (3-15, max 30 chars each). Each can be:
+        - A string: "headline text" (no pinning)
+        - A dict: {"text": "headline text", "pinned_field": "HEADLINE_1"}
+          Valid pinned_field values: HEADLINE_1, HEADLINE_2, HEADLINE_3
+      descriptions: List of descriptions (2-4, max 90 chars each). Each can be:
+        - A string: "description text" (no pinning)
+        - A dict: {"text": "description text", "pinned_field": "DESCRIPTION_1"}
+          Valid pinned_field values: DESCRIPTION_1, DESCRIPTION_2
       final_url: Landing page URL.
       path1: Display URL path1 (max 15 chars, optional).
       path2: Display URL path2 (max 15 chars, optional).
@@ -56,8 +62,33 @@ def create_responsive_search_ad(
   ads_client = _get_client(login_customer_id)
   service = ads_client.get_service("AdGroupAdService")
 
-  headline_assets = [common_types.AdTextAsset(text=h) for h in headlines]
-  description_assets = [common_types.AdTextAsset(text=d) for d in descriptions]
+  headline_assets = []
+  for h in headlines:
+    if isinstance(h, str):
+      headline_assets.append(common_types.AdTextAsset(text=h))
+    else:
+      asset = common_types.AdTextAsset(text=h["text"])
+      if h.get("pinned_field"):
+        asset.pinned_field = _resolve_enum(
+            enum_types.ServedAssetFieldTypeEnum.ServedAssetFieldType,
+            h["pinned_field"],
+            "pinned_field",
+        )
+      headline_assets.append(asset)
+
+  description_assets = []
+  for d in descriptions:
+    if isinstance(d, str):
+      description_assets.append(common_types.AdTextAsset(text=d))
+    else:
+      asset = common_types.AdTextAsset(text=d["text"])
+      if d.get("pinned_field"):
+        asset.pinned_field = _resolve_enum(
+            enum_types.ServedAssetFieldTypeEnum.ServedAssetFieldType,
+            d["pinned_field"],
+            "pinned_field",
+        )
+      description_assets.append(asset)
 
   rsa_info = common_types.ResponsiveSearchAdInfo(
       headlines=headline_assets,
