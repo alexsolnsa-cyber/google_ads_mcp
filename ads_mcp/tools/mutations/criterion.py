@@ -127,6 +127,60 @@ def create_negative_campaign_keywords(
 
 
 @mcp.tool()
+def create_negative_ad_group_keywords(
+    customer_id: str,
+    ad_group_resource_name: str,
+    keywords: list[str],
+    match_type: str = "EXACT",
+    login_customer_id: str | None = None,
+) -> dict[str, list[str]]:
+  """Creates negative keywords at the ad group level.
+
+  Args:
+      customer_id: Google Ads customer ID (digits only).
+      ad_group_resource_name: Resource name of the ad group.
+      keywords: List of negative keyword strings (e.g., ["free ielts",
+        "ielts sample"]).
+      match_type: EXACT, PHRASE, or BROAD. Default EXACT.
+      login_customer_id: MCC account ID if customer is managed.
+
+  Returns:
+      Dict with list of created criterion resource_names.
+  """
+  ads_client = _get_client(login_customer_id)
+  service = ads_client.get_service("AdGroupCriterionService")
+
+  resolved_match_type = _resolve_enum(
+      enum_types.KeywordMatchTypeEnum.KeywordMatchType,
+      match_type,
+      "match_type",
+  )
+
+  operations = []
+  for kw_text in keywords:
+    criterion = resource_types.AdGroupCriterion(
+        ad_group=ad_group_resource_name,
+        negative=True,
+        keyword=common_types.KeywordInfo(
+            text=kw_text,
+            match_type=resolved_match_type,
+        ),
+    )
+    operations.append(
+        service_types.AdGroupCriterionOperation(create=criterion)
+    )
+
+  try:
+    response = service.mutate_ad_group_criteria(
+        customer_id=customer_id, operations=operations
+    )
+  except GoogleAdsException as e:
+    _handle_google_ads_error(e)
+
+  return {"resource_names": [r.resource_name for r in response.results]}
+
+
+@mcp.tool()
 def update_keyword_status(
     customer_id: str,
     ad_group_criterion_resource_name: str,
