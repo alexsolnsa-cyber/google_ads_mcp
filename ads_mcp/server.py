@@ -43,6 +43,9 @@ if os.getenv("ADS_MCP_ENABLE_MUTATIONS", "false").lower() == "true":
           mutations.ad,
           mutations.criterion,
           mutations.sitelink,
+          mutations.callout,
+          mutations.schedule,
+          mutations.audience,
       ]
   )
 
