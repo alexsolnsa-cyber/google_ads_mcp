@@ -5,14 +5,14 @@ import os
 
 from ads_mcp.coordinator import mcp_server
 from ads_mcp.scripts.generate_views import update_views_yaml
-from ads_mcp.tools import accounts, docs, reporting
+from ads_mcp.tools import accounts, docs, keyword_planner, reporting
 from ads_mcp.tools._utils import get_ads_client
 import dotenv
 from fastmcp.server.auth.providers.google import GoogleProvider, GoogleTokenVerifier
 
 dotenv.load_dotenv()
 
-tools = [reporting, accounts, docs]
+tools = [reporting, accounts, docs, keyword_planner]
 
 if os.getenv("ADS_MCP_ENABLE_MUTATIONS", "false").lower() == "true":
   from ads_mcp.tools import mutations
